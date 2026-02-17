@@ -1,27 +1,56 @@
 # Review Pilot
 
-A semantic code review agent that detects pattern violations linters miss. Runs as a GitHub Action, powered by Claude.
+![Node](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-vitest-6E9F18)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
 
-Unlike traditional linters that check syntax and style, Review Pilot understands **intent** — it checks whether your code follows the semantic conventions your team actually cares about, like "all service functions must log errors with structured context" or "API handlers must validate request bodies with a typed schema."
+A multi-agent semantic code review GitHub Action that catches architecture, security, and reliability issues before human review.
 
-## How It Works
+## Table of Contents
+- [What This Project Does](#what-this-project-does)
+- [Why This Project Is Useful](#why-this-project-is-useful)
+- [How to Get Started](#how-to-get-started)
+- [Where to Get Help](#where-to-get-help)
+- [Who Maintains and Contributes](#who-maintains-and-contributes)
 
-Review Pilot runs a **3-pass analysis pipeline** on every pull request:
+## What This Project Does
+Review Pilot runs on pull requests and posts a structured review comment with inline findings.
 
-1. **Rule Matching** — Checks changed files against your natural-language rules (defined in `.review-pilot.yml`), scoped by glob patterns so rules only apply where they're relevant.
-2. **Cross-File Consistency** — Resolves imports from changed files and compares them against existing codebase patterns to catch deviations (e.g., a new handler missing error logging that all sibling handlers include).
-3. **Ranking & Deduplication** — Merges related findings, deduplicates, and ranks by severity to surface only the most important issues.
+Current workflow in `src/index.ts`:
+1. Load runtime policy from `.review-pilot.yml`, learned rules, and optional `reviewer_policy.json` snapshot.
+2. Parse changed files from the PR diff.
+3. Route each file to specialist analyzers.
+4. Run specialists and synthesize findings.
+5. Post a GitHub review (`APPROVE`, `COMMENT`, or `REQUEST_CHANGES`).
+6. On merged PRs, mine conventions into `.review-pilot-learned.json`.
 
-The result is posted as a PR review with inline comments on the most critical findings.
+## Why This Project Is Useful
+### Key Features
+- Multi-agent analysis with focused specialists:
+  - `security`
+  - `logging-error`
+  - `architecture-boundary`
+  - `api-contract`
+  - `data-access`
+  - `reliability`
+- Policy-driven behavior with hard and soft rules.
+- Allowlist support for scoped exceptions.
+- Configurable `warn` vs `enforce` mode.
+- Convention mining from merged PRs.
 
-### Self-Learning
+### Benefits
+- Reduces review load by pre-filtering high-signal issues.
+- Encodes team conventions into repeatable checks.
+- Keeps feedback actionable with file/line findings.
 
-When a PR is merged, Review Pilot can **mine conventions** from the diff and review comments, automatically extracting new semantic rules. These learned rules are stored in `.review-pilot-learned.json` and are applied to future reviews — so your review coverage grows organically as your team's patterns evolve.
+## How to Get Started
+### Prerequisites
+- Node.js `>=20`
+- A repository with GitHub Actions enabled
+- `ANTHROPIC_API_KEY` secret configured in your repository
 
-## Quick Start
-
-### 1. Add the workflow
-
+### Install as a GitHub Action
 Create `.github/workflows/review-pilot.yml`:
 
 ```yaml
@@ -39,139 +68,140 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: <your-org>/review-pilot@v1
+      - uses: <owner>/review-pilot@v1
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          mode: warn
+          config-path: .review-pilot.yml
 ```
 
-### 2. Add your rules
-
-Create `.review-pilot.yml` in your repo root:
+For local action development in the same repo:
 
 ```yaml
-rules:
-  - id: "require-error-logging"
-    description: "All service functions must log errors with structured context"
-    scope: "src/services/**"
-    pattern: "catch blocks must include logger.error() with request context, not bare catch or console.log"
-    severity: "critical"
+- uses: ./
+  with:
+    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+```
 
-  - id: "require-schema-validation"
-    description: "All API endpoints must use typed schemas for request validation"
-    scope: "src/api/**"
-    pattern: "route handlers must validate request body with a typed schema (Zod, Pydantic, etc), not raw body access"
-    severity: "warning"
+### Configure Rules
+Start from `.review-pilot.yml` in this repo. You can use legacy `rules` or new `soft_rules` + `hard_rules`.
 
-ignore:
-  - "**/*.test.ts"
-  - "**/generated/**"
-  - "**/*.d.ts"
+Example:
+
+```yaml
+soft_rules:
+  - id: require-error-logging
+    description: Services must log errors with context
+    scope: src/services/**
+    pattern: catch blocks should log errors with request context
+    severity: warning
+
+hard_rules:
+  - id: forbid-hardcoded-token
+    description: Hardcoded tokens are not allowed
+    scope: src/**
+    category: security
+    mode: forbid_regex
+    target: added_lines
+    pattern: '(?i)(token|secret|api[_-]?key)\s*[:=]\s*"[^"]+"'
+    severity: critical
+    new_code_only: true
+
+enforcement:
+  mode: warn
+  block_on: [critical]
 
 settings:
   max_inline_comments: 3
-  model: "claude-sonnet-4-5-20250929"
+  model: claude-sonnet-4-5-20250929
   context_budget: 50000
 ```
 
-### 3. Add your API key
-
-Add `ANTHROPIC_API_KEY` to your repository secrets (Settings → Secrets and variables → Actions).
-
-## Configuration
-
 ### Action Inputs
+From `action.yml`:
 
-| Input                 | Required | Default                       | Description                    |
-| --------------------- | -------- | ----------------------------- | ------------------------------ |
-| `anthropic-api-key`   | Yes      | —                             | Anthropic API key for Claude   |
-| `github-token`        | No       | `${{ github.token }}`         | GitHub token for API access    |
-| `model`               | No       | `claude-sonnet-4-5-20250929`  | Claude model to use            |
-| `config-path`         | No       | `.review-pilot.yml`           | Path to config file            |
-| `max-inline-comments` | No       | `3`                           | Max inline comments per review |
-| `learned-rules-path`  | No       | `.review-pilot-learned.json`  | Path to learned rules file     |
-
-### Rule Definition
-
-Each rule has:
-
-| Field         | Description                                                                   |
-| ------------- | ----------------------------------------------------------------------------- |
-| `id`          | Unique identifier (kebab-case)                                                |
-| `description` | Human-readable description of the convention                                  |
-| `scope`       | Glob pattern for which files the rule applies to                              |
-| `pattern`     | Natural language description of what to check — this is what Claude evaluates |
-| `severity`    | `critical`, `warning`, or `info`                                              |
-
-Rules are **natural language**, not regex. Write them the way you'd explain the convention to a new team member:
-
-```yaml
-# Good — describes intent
-pattern: "async functions that access the database must wrap queries in a try/catch and log failures with the request ID"
-
-# Less useful — too vague
-pattern: "handle errors properly"
-```
-
-### Settings
-
-| Setting               | Default                      | Description                                                                   |
-| --------------------- | ---------------------------- | ----------------------------------------------------------------------------- |
-| `max_inline_comments` | `3`                          | Maximum inline review comments posted on the PR                               |
-| `model`               | `claude-sonnet-4-5-20250929` | Claude model used for analysis                                                |
-| `context_budget`      | `50000`                      | Token budget for file context (controls how many imported files are included) |
-
-## Review Output
-
-Review Pilot posts a PR review that includes:
-
-- A **summary table** with finding counts by severity
-- **Detailed findings** with file/line references, explanations, and fix suggestions
-- **Inline comments** on the diff for the top N most critical findings
-- The review event is set to `REQUEST_CHANGES` if any critical findings exist, `COMMENT` for warnings/info, or `APPROVE` if clean
+| Input | Required | Default | Description |
+| --- | --- | --- | --- |
+| `github-token` | No | `${{ github.token }}` | GitHub token for API calls |
+| `anthropic-api-key` | Yes | - | Anthropic key for convention mining |
+| `model` | No | `claude-sonnet-4-5-20250929` | Model used for mining |
+| `config-path` | No | `.review-pilot.yml` | Project config path |
+| `policy-path` | No | `reviewer_policy.json` | Optional policy snapshot path |
+| `mode` | No | `warn` | `warn` or `enforce` |
+| `max-inline-comments` | No | `3` | Max inline comments |
+| `learned-rules-path` | No | `.review-pilot-learned.json` | Learned rules store |
+| `agent-max-turns` | No | `12` | Reserved compatibility input |
 
 ### Action Outputs
 
-| Output           | Description                                                     |
-| ---------------- | --------------------------------------------------------------- |
-| `findings-count` | Number of findings detected                                     |
-| `review-event`   | Review type posted (`APPROVE`, `COMMENT`, or `REQUEST_CHANGES`) |
-| `tokens-used`    | Total tokens consumed (input + output)                          |
+| Output | Description |
+| --- | --- |
+| `findings-count` | Total findings |
+| `critical-count` | Critical findings |
+| `warning-count` | Warning findings |
+| `review-event` | Posted event (`APPROVE`/`COMMENT`/`REQUEST_CHANGES`) |
+| `policy-version` | Policy schema version |
+| `tokens-used` | Token usage (currently static analyzers return `0`) |
 
-## Supported Languages
-
-Import resolution and context gathering works for:
-
-- TypeScript / JavaScript
-- Python
-- Go
-
-Rules themselves are language-agnostic — you can write rules for any file type, scoped by glob patterns.
-
-## Development
-
+### Local Development
 ```bash
 npm install
-npm run build       # Build with tsup
-npm test            # Run tests with vitest
-npm run typecheck   # Type check with tsc
+npm run typecheck
+npm test
+npm run build
 ```
 
-## Architecture
-
-```
+### Project Layout
+```text
 src/
-├── index.ts              # Action entry point, orchestrates the pipeline
-├── config.ts             # YAML config + learned rules loading/saving
-├── diff-parser.ts        # Unified diff → structured hunks + changed lines
-├── context-resolver.ts   # Fetches file contents, resolves imports for context
-├── rule-engine.ts        # Matches rules to files by glob scope
-├── prompts.ts            # LLM prompt templates for each analysis pass
-├── analyzer.ts           # 3-pass analysis pipeline (Claude API calls)
-├── reviewer.ts           # Formats findings → GitHub PR review + inline comments
-├── history-miner.ts      # Extracts conventions from merged PRs (self-learning)
-└── types.ts              # Shared type definitions
+  index.ts                       # Action entrypoint
+  config.ts                      # Config + learned/snapshot loading
+  diff-parser.ts                 # PR diff parsing
+  context-resolver.ts            # Changed/imported file context building
+  reviewer.ts                    # Review formatting + GitHub posting
+  types.ts                       # Shared types
+  policy/
+    load-policy.ts
+    merge-policy.ts
+  agents/
+    convention-miner.ts
+    diff-router.ts
+    orchestrator.ts
+    review-synthesizer.ts
+    specialists/
+      security.ts
+      logging-error.ts
+      architecture-boundary.ts
+      api-contract.ts
+      data-access.ts
+      reliability.ts
 ```
 
-## License
+## Where to Get Help
+- Read the implementation plan: [`PLAN.md`](PLAN.md)
+- Review action contract: [`action.yml`](action.yml)
+- Start from example config: [`.review-pilot.yml`](.review-pilot.yml)
+- Check behavior with tests in [`tests/`](tests)
 
-MIT
+If something is unclear or broken, open an issue in this repository with:
+- your workflow file
+- your `.review-pilot.yml`
+- the failing action logs
+
+## Who Maintains and Contributes
+### Maintainer
+- `shaunlim` (see `author` in [`action.yml`](action.yml))
+
+### Contributing
+Contributions are welcome. Keep changes focused and test-backed.
+
+Recommended flow:
+1. Create a feature branch.
+2. Add/modify tests under [`tests/`](tests).
+3. Run:
+   - `npm run typecheck`
+   - `npm test`
+   - `npm run build`
+4. Open a pull request with a clear summary, scope, and validation output.
+
+For major design changes, align with [`PLAN.md`](PLAN.md) in the same PR.
