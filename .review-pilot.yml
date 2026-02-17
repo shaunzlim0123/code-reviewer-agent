@@ -1,4 +1,4 @@
-# Code Sentinel — Example configuration
+# Review Pilot — Example configuration
 # This file defines semantic review rules that linters can't enforce.
 
 rules:

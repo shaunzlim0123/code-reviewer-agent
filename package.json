@@ -1,5 +1,5 @@
 {
-  "name": "code-sentinel",
+  "name": "review-pilot",
   "version": "1.0.0",
   "description": "Semantic code review agent that detects pattern violations linters miss",
   "main": "dist/index.js",

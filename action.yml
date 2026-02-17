@@ -1,4 +1,4 @@
-name: "Code Sentinel"
+name: "Review Pilot"
 description: "Semantic code review agent that detects pattern violations linters miss"
 author: "shaunlim"
 
@@ -15,9 +15,9 @@ inputs:
     required: false
     default: "claude-sonnet-4-5-20250929"
   config-path:
-    description: "Path to .code-sentinel.yml config file"
+    description: "Path to .review-pilot.yml config file"
     required: false
-    default: ".code-sentinel.yml"
+    default: ".review-pilot.yml"
   max-inline-comments:
     description: "Maximum number of inline comments to post (top N by severity)"
     required: false
@@ -25,7 +25,7 @@ inputs:
   learned-rules-path:
     description: "Path to learned rules JSON file"
     required: false
-    default: ".code-sentinel-learned.json"
+    default: ".review-pilot-learned.json"
 
 runs:
   using: "node20"

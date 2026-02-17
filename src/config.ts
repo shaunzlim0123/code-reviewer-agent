@@ -1,7 +1,7 @@
 import * as core from "@actions/core";
 import * as fs from "fs";
 import * as yaml from "yaml";
-import type { LearnedRule, LearnedRulesStore, Rule, SentinelConfig } from "./types.js";
+import type { LearnedRule, LearnedRulesStore, Rule, ReviewPilotConfig } from "./types.js";
 
 interface RawConfig {
   rules?: Array<{
@@ -19,7 +19,7 @@ interface RawConfig {
   };
 }
 
-const DEFAULT_CONFIG: SentinelConfig = {
+const DEFAULT_CONFIG: ReviewPilotConfig = {
   rules: [],
   ignore: [],
   settings: {
@@ -34,10 +34,10 @@ function isValidSeverity(s: string): s is Rule["severity"] {
 }
 
 /**
- * Load and validate the .code-sentinel.yml config file.
+ * Load and validate the .review-pilot.yml config file.
  * Falls back to defaults if the file doesn't exist.
  */
-export function loadConfig(configPath: string): SentinelConfig {
+export function loadConfig(configPath: string): ReviewPilotConfig {
   if (!fs.existsSync(configPath)) {
     core.info(`No config file found at ${configPath}, using defaults`);
     return DEFAULT_CONFIG;

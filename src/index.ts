@@ -13,9 +13,9 @@ async function run(): Promise<void> {
     // ── Read inputs ──────────────────────────────────────────────
     const apiKey = core.getInput("anthropic-api-key", { required: true });
     const model = core.getInput("model") || "claude-sonnet-4-5-20250929";
-    const configPath = core.getInput("config-path") || ".code-sentinel.yml";
+    const configPath = core.getInput("config-path") || ".review-pilot.yml";
     const maxInlineComments = parseInt(core.getInput("max-inline-comments") || "3", 10);
-    const learnedRulesPath = core.getInput("learned-rules-path") || ".code-sentinel-learned.json";
+    const learnedRulesPath = core.getInput("learned-rules-path") || ".review-pilot-learned.json";
 
     const token = core.getInput("github-token") || process.env.GITHUB_TOKEN;
     if (!token) {

@@ -61,7 +61,7 @@ export interface Rule {
   source: "seed" | "learned";
 }
 
-export interface SentinelConfig {
+export interface ReviewPilotConfig {
   rules: Rule[];
   ignore: string[];
   settings: {

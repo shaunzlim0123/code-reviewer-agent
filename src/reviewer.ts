@@ -18,7 +18,7 @@ const SEVERITY_EMOJI: Record<Severity, string> = {
   info: "🔵",
 };
 
-const BOT_SIGNATURE = "<!-- code-sentinel-review -->";
+const BOT_SIGNATURE = "<!-- review-pilot-review -->";
 
 /**
  * Map a file line number to a diff position for the GitHub Review API.
@@ -76,7 +76,7 @@ function formatSummaryBody(result: AnalysisResult): string {
   const warnings = findings.filter((f) => f.severity === "warning");
   const infos = findings.filter((f) => f.severity === "info");
 
-  let body = `${BOT_SIGNATURE}\n## Code Sentinel Review\n\n`;
+  let body = `${BOT_SIGNATURE}\n## Review Pilot\n\n`;
   body += `${summary}\n\n`;
 
   if (findings.length === 0) {
@@ -141,7 +141,7 @@ export function buildReviewOutput(
 }
 
 /**
- * Check if Code Sentinel has already posted a review on this PR.
+ * Check if Review Pilot has already posted a review on this PR.
  * Used for idempotency to avoid duplicate reviews on re-runs.
  */
 async function hasExistingReview(
@@ -175,14 +175,14 @@ export async function postReview(
   const existingReviewId = await hasExistingReview(octokit, metadata);
 
   if (existingReviewId) {
-    core.info(`Dismissing existing Code Sentinel review #${existingReviewId}`);
+    core.info(`Dismissing existing Review Pilot review #${existingReviewId}`);
     try {
       await octokit.rest.pulls.dismissReview({
         owner: metadata.owner,
         repo: metadata.repo,
         pull_number: metadata.pullNumber,
         review_id: existingReviewId,
-        message: "Superseded by updated Code Sentinel review",
+        message: "Superseded by updated Review Pilot review",
       });
     } catch {
       core.warning("Could not dismiss previous review (may lack permissions)");

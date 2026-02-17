@@ -1,14 +1,14 @@
-# Code Sentinel
+# Review Pilot
 
 A semantic code review agent that detects pattern violations linters miss. Runs as a GitHub Action, powered by Claude.
 
-Unlike traditional linters that check syntax and style, Code Sentinel understands **intent** — it checks whether your code follows the semantic conventions your team actually cares about, like "all service functions must log errors with structured context" or "API handlers must validate request bodies with a typed schema."
+Unlike traditional linters that check syntax and style, Review Pilot understands **intent** — it checks whether your code follows the semantic conventions your team actually cares about, like "all service functions must log errors with structured context" or "API handlers must validate request bodies with a typed schema."
 
 ## How It Works
 
-Code Sentinel runs a **3-pass analysis pipeline** on every pull request:
+Review Pilot runs a **3-pass analysis pipeline** on every pull request:
 
-1. **Rule Matching** — Checks changed files against your natural-language rules (defined in `.code-sentinel.yml`), scoped by glob patterns so rules only apply where they're relevant.
+1. **Rule Matching** — Checks changed files against your natural-language rules (defined in `.review-pilot.yml`), scoped by glob patterns so rules only apply where they're relevant.
 2. **Cross-File Consistency** — Resolves imports from changed files and compares them against existing codebase patterns to catch deviations (e.g., a new handler missing error logging that all sibling handlers include).
 3. **Ranking & Deduplication** — Merges related findings, deduplicates, and ranks by severity to surface only the most important issues.
 
@@ -16,16 +16,16 @@ The result is posted as a PR review with inline comments on the most critical fi
 
 ### Self-Learning
 
-When a PR is merged, Code Sentinel can **mine conventions** from the diff and review comments, automatically extracting new semantic rules. These learned rules are stored in `.code-sentinel-learned.json` and are applied to future reviews — so your review coverage grows organically as your team's patterns evolve.
+When a PR is merged, Review Pilot can **mine conventions** from the diff and review comments, automatically extracting new semantic rules. These learned rules are stored in `.review-pilot-learned.json` and are applied to future reviews — so your review coverage grows organically as your team's patterns evolve.
 
 ## Quick Start
 
 ### 1. Add the workflow
 
-Create `.github/workflows/code-sentinel.yml`:
+Create `.github/workflows/review-pilot.yml`:
 
 ```yaml
-name: Code Sentinel
+name: Review Pilot
 on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
@@ -39,14 +39,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: <your-org>/code-sentinel@v1
+      - uses: <your-org>/review-pilot@v1
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
 ### 2. Add your rules
 
-Create `.code-sentinel.yml` in your repo root:
+Create `.review-pilot.yml` in your repo root:
 
 ```yaml
 rules:
@@ -81,26 +81,26 @@ Add `ANTHROPIC_API_KEY` to your repository secrets (Settings → Secrets and var
 
 ### Action Inputs
 
-| Input | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `anthropic-api-key` | Yes | — | Anthropic API key for Claude |
-| `github-token` | No | `${{ github.token }}` | GitHub token for API access |
-| `model` | No | `claude-sonnet-4-5-20250929` | Claude model to use |
-| `config-path` | No | `.code-sentinel.yml` | Path to config file |
-| `max-inline-comments` | No | `3` | Max inline comments per review |
-| `learned-rules-path` | No | `.code-sentinel-learned.json` | Path to learned rules file |
+| Input                 | Required | Default                       | Description                    |
+| --------------------- | -------- | ----------------------------- | ------------------------------ |
+| `anthropic-api-key`   | Yes      | —                             | Anthropic API key for Claude   |
+| `github-token`        | No       | `${{ github.token }}`         | GitHub token for API access    |
+| `model`               | No       | `claude-sonnet-4-5-20250929`  | Claude model to use            |
+| `config-path`         | No       | `.review-pilot.yml`           | Path to config file            |
+| `max-inline-comments` | No       | `3`                           | Max inline comments per review |
+| `learned-rules-path`  | No       | `.review-pilot-learned.json`  | Path to learned rules file     |
 
 ### Rule Definition
 
 Each rule has:
 
-| Field | Description |
-|-------|-------------|
-| `id` | Unique identifier (kebab-case) |
-| `description` | Human-readable description of the convention |
-| `scope` | Glob pattern for which files the rule applies to |
-| `pattern` | Natural language description of what to check — this is what Claude evaluates |
-| `severity` | `critical`, `warning`, or `info` |
+| Field         | Description                                                                   |
+| ------------- | ----------------------------------------------------------------------------- |
+| `id`          | Unique identifier (kebab-case)                                                |
+| `description` | Human-readable description of the convention                                  |
+| `scope`       | Glob pattern for which files the rule applies to                              |
+| `pattern`     | Natural language description of what to check — this is what Claude evaluates |
+| `severity`    | `critical`, `warning`, or `info`                                              |
 
 Rules are **natural language**, not regex. Write them the way you'd explain the convention to a new team member:
 
@@ -114,15 +114,15 @@ pattern: "handle errors properly"
 
 ### Settings
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `max_inline_comments` | `3` | Maximum inline review comments posted on the PR |
-| `model` | `claude-sonnet-4-5-20250929` | Claude model used for analysis |
-| `context_budget` | `50000` | Token budget for file context (controls how many imported files are included) |
+| Setting               | Default                      | Description                                                                   |
+| --------------------- | ---------------------------- | ----------------------------------------------------------------------------- |
+| `max_inline_comments` | `3`                          | Maximum inline review comments posted on the PR                               |
+| `model`               | `claude-sonnet-4-5-20250929` | Claude model used for analysis                                                |
+| `context_budget`      | `50000`                      | Token budget for file context (controls how many imported files are included) |
 
 ## Review Output
 
-Code Sentinel posts a PR review that includes:
+Review Pilot posts a PR review that includes:
 
 - A **summary table** with finding counts by severity
 - **Detailed findings** with file/line references, explanations, and fix suggestions
@@ -131,11 +131,11 @@ Code Sentinel posts a PR review that includes:
 
 ### Action Outputs
 
-| Output | Description |
-|--------|-------------|
-| `findings-count` | Number of findings detected |
-| `review-event` | Review type posted (`APPROVE`, `COMMENT`, or `REQUEST_CHANGES`) |
-| `tokens-used` | Total tokens consumed (input + output) |
+| Output           | Description                                                     |
+| ---------------- | --------------------------------------------------------------- |
+| `findings-count` | Number of findings detected                                     |
+| `review-event`   | Review type posted (`APPROVE`, `COMMENT`, or `REQUEST_CHANGES`) |
+| `tokens-used`    | Total tokens consumed (input + output)                          |
 
 ## Supported Languages
 
