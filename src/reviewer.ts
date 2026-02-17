@@ -20,10 +20,6 @@ const SEVERITY_EMOJI: Record<Severity, string> = {
 
 const BOT_SIGNATURE = "<!-- review-pilot-review -->";
 
-/**
- * Map a file line number to a diff position for the GitHub Review API.
- * Returns undefined if the line isn't in the diff.
- */
 export function lineToDiffPosition(
   changedFiles: ChangedFile[],
   filePath: string,
@@ -32,16 +28,14 @@ export function lineToDiffPosition(
   const file = changedFiles.find((f) => f.path === filePath);
   if (!file) return undefined;
 
-  // GitHub diff positions are 1-indexed offsets from the start of the diff
   let position = 0;
   for (const hunk of file.hunks) {
-    position++; // the @@ header counts as position 1 of the hunk
+    position++;
     let currentLine = hunk.newStart;
 
     for (const line of hunk.content.split("\n")) {
       position++;
       if (line.startsWith("-")) {
-        // Deleted line — doesn't affect new file line numbering
         continue;
       }
       if (currentLine === lineNumber) {
@@ -54,21 +48,15 @@ export function lineToDiffPosition(
   return undefined;
 }
 
-/**
- * Format a finding into a markdown inline comment body.
- */
 function formatInlineComment(finding: Finding): string {
   let body = `${SEVERITY_EMOJI[finding.severity]} **${finding.title}**\n\n${finding.explanation}`;
   if (finding.suggestion) {
     body += `\n\n**Suggestion:** ${finding.suggestion}`;
   }
-  body += `\n\n<sub>Rule: \`${finding.ruleId}\`</sub>`;
+  body += `\n\n<sub>Rule: \`${finding.ruleId}\`${finding.agent ? ` | Agent: \`${finding.agent}\`` : ""}</sub>`;
   return body;
 }
 
-/**
- * Build the summary review body with severity-tiered breakdown.
- */
 function formatSummaryBody(result: AnalysisResult): string {
   const { findings, summary, tokenUsage } = result;
 
@@ -80,70 +68,77 @@ function formatSummaryBody(result: AnalysisResult): string {
   body += `${summary}\n\n`;
 
   if (findings.length === 0) {
-    body += `✅ **No semantic issues found.** The changes look consistent with the codebase.\n`;
+    body += "✅ **No semantic issues found.** The changes look consistent with the policy.\n";
   } else {
-    body += `### Findings\n\n`;
-    body += `| Severity | Count |\n|----------|-------|\n`;
+    body += "### Findings\n\n";
+    body += "| Severity | Count |\n|----------|-------|\n";
     if (critical.length > 0) body += `| ${SEVERITY_EMOJI.critical} Critical | ${critical.length} |\n`;
     if (warnings.length > 0) body += `| ${SEVERITY_EMOJI.warning} Warning | ${warnings.length} |\n`;
     if (infos.length > 0) body += `| ${SEVERITY_EMOJI.info} Info | ${infos.length} |\n`;
 
-    body += `\n### Details\n\n`;
+    body += "\n### Details\n\n";
     for (const finding of findings) {
       body += `#### ${SEVERITY_EMOJI[finding.severity]} ${finding.title}\n`;
-      body += `📍 \`${finding.file}:${finding.line}\` | Rule: \`${finding.ruleId}\`\n\n`;
+      body += `📍 \`${finding.file}:${finding.line}\` | Rule: \`${finding.ruleId}\``;
+      if (finding.category) body += ` | Category: \`${finding.category}\``;
+      if (finding.agent) body += ` | Agent: \`${finding.agent}\``;
+      body += "\n\n";
       body += `${finding.explanation}\n`;
       if (finding.suggestion) {
         body += `\n> **Suggestion:** ${finding.suggestion}\n`;
       }
-      body += `\n---\n\n`;
+      body += "\n---\n\n";
     }
   }
 
-  body += `<sub>Analyzed with ${result.passCount} passes | Tokens: ${tokenUsage.inputTokens} in / ${tokenUsage.outputTokens} out</sub>`;
+  body += `<sub>Passes: ${result.passCount} | Tokens: ${tokenUsage.inputTokens} in / ${tokenUsage.outputTokens} out</sub>`;
   return body;
 }
 
-/**
- * Build the complete ReviewOutput with summary and top-N inline comments.
- */
+function chooseReviewEvent(
+  findings: Finding[],
+  opts?: { mode?: "warn" | "enforce"; blockOn?: Severity[] }
+): ReviewOutput["event"] {
+  if (findings.length === 0) return "APPROVE";
+
+  const mode = opts?.mode ?? "enforce";
+  const blockOn = opts?.blockOn ?? ["critical"];
+
+  if (mode === "warn") return "COMMENT";
+
+  const shouldBlock = findings.some((f) => blockOn.includes(f.severity));
+  return shouldBlock ? "REQUEST_CHANGES" : "COMMENT";
+}
+
 export function buildReviewOutput(
   result: AnalysisResult,
   changedFiles: ChangedFile[],
-  maxInlineComments: number
+  maxInlineComments: number,
+  opts?: { mode?: "warn" | "enforce"; blockOn?: Severity[] }
 ): ReviewOutput {
   const body = formatSummaryBody(result);
 
-  // Select top findings for inline comments (already ranked by severity)
   const inlineFindings = result.findings.slice(0, maxInlineComments);
   const comments: InlineComment[] = [];
 
   for (const finding of inlineFindings) {
     const position = lineToDiffPosition(changedFiles, finding.file, finding.line);
-    if (position !== undefined) {
-      comments.push({
-        path: finding.file,
-        line: position,
-        body: formatInlineComment(finding),
-      });
-    }
+    if (position === undefined) continue;
+
+    comments.push({
+      path: finding.file,
+      line: position,
+      body: formatInlineComment(finding),
+    });
   }
 
-  // Determine review event based on severity
-  const hasCritical = result.findings.some((f) => f.severity === "critical");
-  const event = result.findings.length === 0
-    ? "APPROVE" as const
-    : hasCritical
-      ? "REQUEST_CHANGES" as const
-      : "COMMENT" as const;
-
-  return { body, comments, event };
+  return {
+    body,
+    comments,
+    event: chooseReviewEvent(result.findings, opts),
+  };
 }
 
-/**
- * Check if Review Pilot has already posted a review on this PR.
- * Used for idempotency to avoid duplicate reviews on re-runs.
- */
 async function hasExistingReview(
   octokit: Octokit,
   metadata: RepoMetadata
@@ -159,19 +154,15 @@ async function hasExistingReview(
       return review.id;
     }
   }
+
   return null;
 }
 
-/**
- * Post or update the review on the PR via GitHub API.
- */
 export async function postReview(
   octokit: Octokit,
   metadata: RepoMetadata,
-  review: ReviewOutput,
-  changedFiles: ChangedFile[]
+  review: ReviewOutput
 ): Promise<void> {
-  // Check for existing review to avoid duplicates
   const existingReviewId = await hasExistingReview(octokit, metadata);
 
   if (existingReviewId) {
@@ -189,7 +180,6 @@ export async function postReview(
     }
   }
 
-  // Post new review
   core.info(`Posting review with ${review.comments.length} inline comments`);
 
   await octokit.rest.pulls.createReview({
@@ -199,10 +189,10 @@ export async function postReview(
     commit_id: metadata.headSha,
     body: review.body,
     event: review.event,
-    comments: review.comments.map((c) => ({
-      path: c.path,
-      position: c.line,
-      body: c.body,
+    comments: review.comments.map((comment) => ({
+      path: comment.path,
+      position: comment.line,
+      body: comment.body,
     })),
   });
 

@@ -1,4 +1,4 @@
-// ─── Diff Parsing ───────────────────────────────────────────────
+// Diff parsing
 
 export interface DiffHunk {
   header: string;
@@ -24,7 +24,7 @@ export interface ChangedFile {
   patch: string;
 }
 
-// ─── Context Resolution ─────────────────────────────────────────
+// Context resolution
 
 export interface FileContent {
   path: string;
@@ -48,66 +48,78 @@ export interface RepoMetadata {
   headSha: string;
 }
 
-// ─── Rule Engine ────────────────────────────────────────────────
+// Rules and policy
 
 export type Severity = "critical" | "warning" | "info";
+export type RuleSource = "seed" | "learned" | "policy";
+export type SpecialistName =
+  | "security"
+  | "logging-error"
+  | "architecture-boundary"
+  | "api-contract"
+  | "data-access"
+  | "reliability";
 
 export interface Rule {
   id: string;
   description: string;
-  scope: string; // glob pattern
-  pattern: string; // natural language description of what to check
+  scope: string;
+  pattern: string;
   severity: Severity;
-  source: "seed" | "learned";
+  source: RuleSource;
+}
+
+export interface HardRule {
+  id: string;
+  description: string;
+  scope: string;
+  severity: Severity;
+  source: RuleSource;
+  category: SpecialistName | "any";
+  mode: "forbid_regex" | "require_regex";
+  pattern: string;
+  target: "added_lines" | "file_content";
+  message?: string;
+  newCodeOnly: boolean;
+}
+
+export interface AllowlistEntry {
+  path: string;
+  ruleIds?: string[];
+  reason?: string;
+}
+
+export interface EnforcementSettings {
+  mode: "warn" | "enforce";
+  blockOn: Severity[];
+  newCodeOnly: boolean;
+  maxComments: number;
+}
+
+export interface AgentRuntimeSettings {
+  enabled: boolean;
+  maxFindings: number;
+}
+
+export interface AgentSettings {
+  specialists: Record<SpecialistName, AgentRuntimeSettings>;
 }
 
 export interface ReviewPilotConfig {
+  // Backward-compatible alias with previous config format.
   rules: Rule[];
+  softRules: Rule[];
+  hardRules: HardRule[];
   ignore: string[];
+  allowlist: AllowlistEntry[];
   settings: {
     maxInlineComments: number;
     model: string;
-    contextBudget: number; // token estimate limit
+    contextBudget: number;
   };
+  enforcement: EnforcementSettings;
+  agents: AgentSettings;
 }
-
-// ─── Analysis Results ───────────────────────────────────────────
-
-export interface Finding {
-  ruleId: string;
-  severity: Severity;
-  file: string;
-  line: number;
-  title: string;
-  explanation: string;
-  suggestion?: string;
-}
-
-export interface AnalysisResult {
-  findings: Finding[];
-  summary: string;
-  passCount: number;
-  tokenUsage: {
-    inputTokens: number;
-    outputTokens: number;
-  };
-}
-
-// ─── Review Output ──────────────────────────────────────────────
-
-export interface InlineComment {
-  path: string;
-  line: number;
-  body: string;
-}
-
-export interface ReviewOutput {
-  body: string;
-  comments: InlineComment[];
-  event: "COMMENT" | "REQUEST_CHANGES" | "APPROVE";
-}
-
-// ─── History Mining ─────────────────────────────────────────────
 
 export interface LearnedRule {
   id: string;
@@ -120,11 +132,90 @@ export interface LearnedRule {
     prNumber: number;
     mergedAt: string;
   };
-  confidence: number; // 0-1 how confident the extraction is
+  confidence: number;
 }
 
 export interface LearnedRulesStore {
   version: number;
   rules: LearnedRule[];
   lastUpdated: string;
+}
+
+export interface PolicySnapshot {
+  version: number;
+  generatedAt: string;
+  softRules: Rule[];
+  hardRules: HardRule[];
+}
+
+export interface PolicyBundle {
+  softRules: Rule[];
+  hardRules: HardRule[];
+  allowlist: AllowlistEntry[];
+  ignore: string[];
+  settings: ReviewPilotConfig["settings"];
+  enforcement: EnforcementSettings;
+  agents: AgentSettings;
+}
+
+// Diff routing
+
+export interface FileClassification {
+  path: string;
+  kind:
+    | "generated"
+    | "handler"
+    | "service"
+    | "dal"
+    | "model"
+    | "config"
+    | "test"
+    | "other";
+}
+
+export interface RoutedFile {
+  file: ChangedFile;
+  classification: FileClassification;
+}
+
+export interface DiffRoutingResult {
+  bySpecialist: Record<SpecialistName, RoutedFile[]>;
+  generatedTouched: RoutedFile[];
+}
+
+// Analysis and review output
+
+export interface Finding {
+  ruleId: string;
+  severity: Severity;
+  file: string;
+  line: number;
+  title: string;
+  explanation: string;
+  suggestion?: string;
+  category?: SpecialistName;
+  agent?: string;
+  evidence?: string;
+}
+
+export interface AnalysisResult {
+  findings: Finding[];
+  summary: string;
+  passCount: number;
+  tokenUsage: {
+    inputTokens: number;
+    outputTokens: number;
+  };
+}
+
+export interface InlineComment {
+  path: string;
+  line: number;
+  body: string;
+}
+
+export interface ReviewOutput {
+  body: string;
+  comments: InlineComment[];
+  event: "COMMENT" | "REQUEST_CHANGES" | "APPROVE";
 }
