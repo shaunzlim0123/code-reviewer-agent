@@ -13,6 +13,7 @@ function classifyPath(path: string): FileClassification["kind"] {
     p.includes("/generated/") ||
     p.includes("/gen/") ||
     p.includes("/biz/model/") ||
+    p.includes("biz/model/") ||
     p.endsWith("_gen.go") ||
     p.endsWith("router_gen.go")
   ) {
