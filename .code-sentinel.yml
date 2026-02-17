@@ -1,0 +1,42 @@
+# Code Sentinel — Example configuration
+# This file defines semantic review rules that linters can't enforce.
+
+rules:
+  - id: "require-error-logging"
+    description: "All service functions must log errors with structured context"
+    scope: "src/services/**"
+    pattern: "catch blocks must include logger.error() with request context, not bare catch or console.log"
+    severity: "critical"
+
+  - id: "require-schema-validation"
+    description: "All API endpoints must use typed schemas for request validation"
+    scope: "src/api/**"
+    pattern: "route handlers must validate request body with a typed schema (Pydantic, Zod, etc), not raw body access"
+    severity: "warning"
+
+  - id: "require-auth-check"
+    description: "Protected endpoints must verify authentication before processing"
+    scope: "src/api/**"
+    pattern: "handlers for non-public routes must include an auth/permission check before business logic"
+    severity: "critical"
+
+  - id: "require-trace-context"
+    description: "Service layer functions must propagate trace/request context"
+    scope: "src/services/**"
+    pattern: "functions should accept and pass through a context or request ID for observability"
+    severity: "info"
+
+ignore:
+  - "**/*.test.ts"
+  - "**/*.spec.ts"
+  - "**/generated/**"
+  - "**/*.d.ts"
+  - "**/node_modules/**"
+  - "package-lock.json"
+  - "yarn.lock"
+  - "pnpm-lock.yaml"
+
+settings:
+  max_inline_comments: 3
+  model: "claude-sonnet-4-5-20250929"
+  context_budget: 50000
