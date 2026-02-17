@@ -50,6 +50,7 @@ Respond with a JSON array:
 ]
 \`\`\`
 
+
 Return ONLY the JSON array. If no clear conventions are found, return an empty array [].`;
 
 /**
@@ -60,7 +61,7 @@ export async function mineFromMergedPR(
   context: Context,
   apiKey: string,
   model: string,
-  learnedRulesPath: string
+  learnedRulesPath: string,
 ): Promise<void> {
   const pr = context.payload.pull_request;
   if (!pr || !pr.merged) {
@@ -103,7 +104,7 @@ export async function mineFromMergedPR(
   // Call Claude to extract conventions
   const prompt = EXTRACTION_PROMPT.replace("{diff}", diff).replace(
     "{comments}",
-    commentText
+    commentText,
   );
 
   const client = new Anthropic({ apiKey });
@@ -171,6 +172,6 @@ export async function mineFromMergedPR(
   const allRules = [...existing, ...newRules];
   saveLearnedRules(learnedRulesPath, allRules);
   core.info(
-    `Added ${newRules.length} new learned rules (total: ${allRules.length})`
+    `Added ${newRules.length} new learned rules (total: ${allRules.length})`,
   );
 }
